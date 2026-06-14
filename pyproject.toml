@@ -1,28 +1,34 @@
+# 此區塊定義專案打包與建置時使用的 PEP 517 設定。
 [build-system]
 requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# 此區塊提供套件工具與安裝流程使用的專案中繼資料。
 [project]
 name = "transcript-polish"
 version = "0.1.0"
 description = "Polish raw transcripts into Traditional Chinese Markdown with local LLMs."
 readme = "README.md"
 requires-python = ">=3.10"
+# 這裡列出預設 CLI 流程執行時需要的相依套件。
 dependencies = [
     "transformers>=4.57.0",
     "opencc-python-reimplemented>=0.1.7",
-]
-
-[project.optional-dependencies]
-quantization = [
     "accelerate>=1.14.0",
     "bitsandbytes>=0.49.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
 [project.scripts]
+# 安裝後會提供 `transcript-polish` 指令入口。
 transcript-polish = "transcript_polish.cli:main"
 
 [tool.setuptools]
+# 專案採用 `src/` 目錄布局來放置可匯入的套件程式碼。
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]

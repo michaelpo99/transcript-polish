@@ -2,6 +2,7 @@
 import argparse
 import importlib.metadata
 import importlib.util
+import json
 import platform
 import re
 import sys
@@ -21,45 +22,36 @@ REPAIR_MIN_RATIO = 0.7
 SOURCE_MIN_RATIO = 0.3
 GENERIC_TITLE_HINTS = {"逐字稿", "transcript", "formatted", "polished"}
 
-SYSTEM_PROMPT = """你是一個專業的繁體中文文章編輯與排版助理。你的任務是將逐字稿整理為台灣習慣的繁體中文 Markdown。
+DEFAULT_SYSTEM_PROMPT = """你是一個保守型的繁體中文逐字稿整理助理。你的任務是把 ASR 原始逐字稿整理成可讀、忠實、保留講者原本語氣與詞彙選擇的繁體中文 Markdown。
 
 必須嚴格遵守以下規則：
-1. 【忠於原意】不得摘要、重寫、增加、重新闡釋或改變原文資訊與順序，不要添加講者沒有說的話。
-2. 【語音辨識錯字】可修正根據上下文高度確定的語音辨識錯字、同音誤字與錯誤斷詞；若無法高度確定，必須保留原文，不得猜測。
-3. 【標點與分段】為原始文字加上適當標點，並根據語意自然停頓切分段落。
-4. 【標題】只有在主題自然切換時，才加上簡潔的 Markdown 標題；標題不得發明原文沒有的結論。
-5. 【台灣繁體化】將簡體字與大陸用語轉為台灣常見的繁體中文與慣用語。
-6. 【禁止雜訊】不要輸出英文說明、分隔線、程式碼區塊標記或任何與正文無關的字樣。
-7. 【僅輸出結果】直接輸出整理後的 Markdown 內容。"""
+1. 【忠實】不得摘要、濃縮、改寫成文章、增加資訊、重新闡釋或改變原文資訊順序。
+2. 【保留原話】保留講者的口語、語助詞、中英夾雜與原本語氣；不要把正確英文口語翻成中文。
+3. 【ASR 修正】只可修正根據上下文高度確定的語音辨識錯字、同音誤字與錯誤斷詞；若無法高度確定，必須保留原文，不得猜測。
+4. 【繁體化】將簡體字轉為繁體字形，但不要為了台灣化而改寫原本正確的詞彙或英文用語。
+5. 【標點與分段】補上適當標點，並依語意自然停頓切分段落。
+6. 【標題】只有在主題自然切換且非常明確時，才加上簡潔 Markdown 標題；短文或單一主題可以完全不加標題。
+7. 【講者標記】若原文含有時間戳、SPEAKER_XX、講者代號或類似標記，必須原樣保留，不可重新編號、合併或移動到其他講者。
+8. 【禁止雜訊】不要輸出英文說明、分隔線、程式碼區塊標記、模型說明或任何與正文無關的字樣。
+9. 【僅輸出結果】直接輸出整理後的 Markdown 正文。"""
 
-REPAIR_PROMPT = """你是一個嚴格的繁體中文逐字稿修稿助理。請根據「原始逐字稿」檢查並修正「整理草稿」。
+DEFAULT_REPAIR_PROMPT = """你是一個保守型的繁體中文逐字稿修稿助理。請根據「原始逐字稿」檢查並修正「整理草稿」。
 
 必須嚴格遵守以下規則：
 1. 不得新增原始逐字稿沒有的資訊。
-2. 必須改為台灣常用繁體中文，避免簡繁混雜。
-3. 若原文本來就包含英文術語、產品名、指令、路徑、型號或版本號，必須保留其識別性；不得主動新增無關英文。
-4. 不得輸出分隔線、程式碼區塊標記或模型說明文字。
-5. 修正明顯的語音辨識錯字與不自然斷句。
+2. 保留講者原本語氣、口語與中英夾雜；不要把原本正確的英文口語翻成中文。
+3. 若原文本來就包含英文術語、產品名、指令、路徑、型號、版本號、時間戳或 SPEAKER_XX，必須保留其識別性。
+4. 修正 ASR 錯字的目的，是還原講者原話，不是改善遣詞用字或文章化。
+5. 不得輸出分隔線、程式碼區塊標記、模型說明文字或其他包裝文字。
 6. 只在主題非常明確時才加標題；若全文主題單一，可以不加標題。
 7. 最終只輸出可直接存檔的 Markdown 正文。"""
 
-BUILTIN_REPLACEMENTS = {
-    "POA": "PUA",
-    "poa": "PUA",
-    "AIP": "IP",
-    "aip": "IP",
-    "物理资料": "物料資料",
-    "物理資料": "物料資料",
-    "攻深入局": "躬身入局",
-    "孤身入局": "躬身入局",
-    "权权庶民": "權、術、名、地、閒、錢",
-    "權權庶民": "權、術、名、地、閒、錢",
-    "五大能開店": "武大郎開店",
-    "五大能开店": "武大郎開店",
-    "預支差": "預製菜",
-    "预支差": "預製菜",
-    "偏西西": "拼夕夕",
-}
+DEFAULT_FINAL_USER_INSTRUCTION = (
+    "請直接輸出整理後的繁體中文 Markdown 正文，保留原始口語、講者標記與正確英文用語。"
+)
+DEFAULT_REPAIR_USER_INSTRUCTION = (
+    "請保守修正草稿，只處理高度確定的 ASR 錯字、段落與標點問題；保留原有英文術語、口語與講者標記，直接輸出最終 Markdown。"
+)
 
 
 class UserFacingError(Exception):
@@ -98,6 +90,14 @@ class FileJob:
     skip: bool
 
 
+@dataclass(frozen=True)
+class PromptConfig:
+    system_prompt: str
+    repair_prompt: str
+    final_user_instruction: str
+    repair_user_instruction: str
+
+
 def load_opencc_converter():
     if importlib.util.find_spec("opencc") is not None:
         from opencc import OpenCC  # type: ignore
@@ -106,9 +106,18 @@ def load_opencc_converter():
     return None
 
 
+def get_default_prompt_config() -> PromptConfig:
+    return PromptConfig(
+        system_prompt=DEFAULT_SYSTEM_PROMPT,
+        repair_prompt=DEFAULT_REPAIR_PROMPT,
+        final_user_instruction=DEFAULT_FINAL_USER_INSTRUCTION,
+        repair_user_instruction=DEFAULT_REPAIR_USER_INSTRUCTION,
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="使用本地 LLM 整理逐字稿為台灣繁體 Markdown。"
+        description="將 ASR 原始逐字稿保守整理為可讀、忠實的繁體中文 Markdown。"
     )
     parser.add_argument("--file", help="處理單一檔案，僅接受 .txt 或 .md")
     parser.add_argument("--dir", help="處理指定目錄第一層的 .txt 與 .md")
@@ -119,8 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_QUANTIZATION,
         help="指定模型載入模式，預設為 none",
     )
-    parser.add_argument("--replace-dict", help="載入外部強制替換詞彙表")
-    parser.add_argument("--style-guide", help="載入額外 AI 參考指引檔")
+    parser.add_argument("--replace-dict", help="載入外部替換詞彙表")
+    parser.add_argument("--style-guide", help="載入單次任務的額外參考指引")
+    parser.add_argument("--prompt-config", help="載入 prompt 設定檔（JSON）")
     parser.add_argument(
         "--output-dir",
         default=DEFAULT_OUTPUT_DIR,
@@ -316,12 +326,40 @@ def load_style_guide(path_str: Optional[str]) -> str:
     return read_text_file(path).strip()
 
 
-def merge_replacements(
-    builtin_replacements: Dict[str, str], external_replacements: Dict[str, str]
-) -> Dict[str, str]:
-    merged = dict(builtin_replacements)
-    merged.update(external_replacements)
-    return merged
+def load_prompt_config(path_str: Optional[str]) -> PromptConfig:
+    if not path_str:
+        return get_default_prompt_config()
+
+    path = Path(path_str).expanduser().resolve()
+    if not path.is_file():
+        raise UserFacingError(f"錯誤：prompt config 不存在：{path}")
+
+    try:
+        payload = json.loads(read_text_file(path))
+    except json.JSONDecodeError as exc:
+        raise UserFacingError(
+            f"錯誤：prompt config 格式錯誤：{path}:{exc.lineno}:{exc.colno}: {exc.msg}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise UserFacingError(f"錯誤：prompt config 必須是 JSON object：{path}")
+
+    required_fields = (
+        "system_prompt",
+        "repair_prompt",
+        "final_user_instruction",
+        "repair_user_instruction",
+    )
+    values: Dict[str, str] = {}
+    for field_name in required_fields:
+        value = payload.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            raise UserFacingError(
+                f"錯誤：prompt config 缺少有效欄位 {field_name}：{path}"
+            )
+        values[field_name] = value.strip()
+
+    return PromptConfig(**values)
 
 
 def apply_replacements(content: str, replacements: Dict[str, str]) -> str:
@@ -362,7 +400,9 @@ def derive_title_hint(input_path: Path) -> str:
     return stem[:30]
 
 
-def build_messages(content: str, style_guide: str, title_hint: str) -> List[Dict[str, str]]:
+def build_messages(
+    content: str, style_guide: str, title_hint: str, prompt_config: PromptConfig
+) -> List[Dict[str, str]]:
     user_parts = [
         "以下是原始逐字稿：",
         "---",
@@ -380,15 +420,19 @@ def build_messages(content: str, style_guide: str, title_hint: str) -> List[Dict
             ]
         )
     user_parts.append("")
-    user_parts.append("請直接輸出校正與排版後的台灣繁體中文 Markdown 內容。")
+    user_parts.append(prompt_config.final_user_instruction)
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": prompt_config.system_prompt},
         {"role": "user", "content": "\n".join(user_parts)},
     ]
 
 
 def build_repair_messages(
-    original_content: str, draft: str, style_guide: str, title_hint: str
+    original_content: str,
+    draft: str,
+    style_guide: str,
+    title_hint: str,
+    prompt_config: PromptConfig,
 ) -> List[Dict[str, str]]:
     user_parts = [
         "以下是原始逐字稿：",
@@ -411,16 +455,9 @@ def build_repair_messages(
                 style_guide,
             ]
         )
-    user_parts.extend(
-        [
-            "",
-            "請修正草稿中的簡繁混用、無關英文說明、分隔線、語音辨識錯字與段落問題。",
-            "原文已有的英文術語、產品名、指令、路徑、型號和版本號必須保留。",
-            "請直接輸出最終 Markdown。",
-        ]
-    )
+    user_parts.extend(["", prompt_config.repair_user_instruction])
     return [
-        {"role": "system", "content": REPAIR_PROMPT},
+        {"role": "system", "content": prompt_config.repair_prompt},
         {"role": "user", "content": "\n".join(user_parts)},
     ]
 
@@ -655,7 +692,7 @@ def generate_response(loaded_model: LoadedModel, prompt_text: str) -> str:
     with torch.no_grad():
         generated_ids = model.generate(
             **model_inputs,
-            max_new_tokens=4096,
+            max_new_tokens=MAX_NEW_TOKENS,
             do_sample=False,
         )
 
@@ -762,9 +799,10 @@ def process_text(
     loaded_model: LoadedModel,
     style_guide: str,
     title_hint: str,
+    prompt_config: PromptConfig,
     converter,
 ) -> str:
-    initial_messages = build_messages(content, style_guide, title_hint)
+    initial_messages = build_messages(content, style_guide, title_hint, prompt_config)
     initial_prompt = render_prompt(loaded_model.tokenizer, initial_messages)
     ensure_prompt_within_budget(loaded_model, initial_prompt, "初稿 prompt")
     draft = generate_response(loaded_model, initial_prompt)
@@ -773,7 +811,9 @@ def process_text(
     draft = clean_response(draft)
 
     if should_repair_output(draft):
-        repair_messages = build_repair_messages(content, draft, style_guide, title_hint)
+        repair_messages = build_repair_messages(
+            content, draft, style_guide, title_hint, prompt_config
+        )
         repair_prompt = render_prompt(loaded_model.tokenizer, repair_messages)
         ensure_prompt_within_budget(loaded_model, repair_prompt, "repair prompt")
         repaired = generate_response(loaded_model, repair_prompt)
@@ -785,8 +825,6 @@ def process_text(
 
     if not draft:
         raise UserFacingError("錯誤：模型輸出為空。")
-    if title_hint and not re.search(r"^\s{0,3}#{1,6}\s", draft, flags=re.MULTILINE):
-        draft = f"# {title_hint}\n\n{draft}".strip()
     final_output = clean_response(draft)
     if not final_output:
         raise UserFacingError("錯誤：模型輸出為空。")
@@ -810,6 +848,7 @@ def print_run_config(
     runtime_info: RuntimeInfo,
     replace_dict_path: Optional[str],
     style_guide_path: Optional[str],
+    prompt_config_path: Optional[str],
     force: bool,
     device: str,
     dtype_name: str,
@@ -828,6 +867,7 @@ def print_run_config(
         print(f"[config] gpu={runtime_info.gpu_name}")
     print(f"[config] replace_dict={replace_dict_path or 'none'}")
     print(f"[config] style_guide={style_guide_path or 'none'}")
+    print(f"[config] prompt_config={prompt_config_path or 'default'}")
     print(f"[config] force={format_bool(force)}")
 
 
@@ -858,6 +898,7 @@ def write_summary_files(
         f"model_memory_bytes={model_memory_bytes}",
         f"replace_dict={args.replace_dict or 'none'}",
         f"style_guide={args.style_guide or 'none'}",
+        f"prompt_config={args.prompt_config or 'default'}",
         f"force={format_bool(args.force)}",
         f"success={counts['success']}",
         f"skipped={counts['skipped']}",
@@ -880,6 +921,7 @@ def write_summary_files(
         f"device={device}",
         f"dtype={dtype_name}",
         f"model_memory_bytes={model_memory_bytes}",
+        f"prompt_config={args.prompt_config or 'default'}",
     ]
     if runtime_info.import_error:
         environment_lines.append(f"import_error={runtime_info.import_error}")
@@ -906,6 +948,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         output_dir = resolve_output_dir(args, base_dir)
         external_replacements = load_replace_dict(args.replace_dict)
         style_guide = load_style_guide(args.style_guide)
+        prompt_config = load_prompt_config(args.prompt_config)
         jobs = build_file_jobs(files, output_dir, args.force)
         runtime_info = detect_runtime_info()
         converter = load_opencc_converter()
@@ -928,11 +971,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 runtime_info=runtime_info,
                 replace_dict_path=args.replace_dict,
                 style_guide_path=args.style_guide,
+                prompt_config_path=args.prompt_config,
                 force=args.force,
                 device="not_loaded",
                 dtype_name="not_loaded",
             )
-            print(f"[run] queued={len(files)}")
+            print(f"[run] queued={len(queued_jobs)}")
             for index, job in enumerate(jobs, 1):
                 print(f"[{index}/{len(jobs)}] skipped -> {job.output_path}")
             write_summary_files(
@@ -969,13 +1013,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             runtime_info=runtime_info,
             replace_dict_path=args.replace_dict,
             style_guide_path=args.style_guide,
+            prompt_config_path=args.prompt_config,
             force=args.force,
             device=loaded_model.device,
             dtype_name=loaded_model.dtype_name,
         )
-        print(f"[run] queued={len(files)}")
-
-        all_replacements = merge_replacements(BUILTIN_REPLACEMENTS, external_replacements)
+        print(f"[run] queued={len(queued_jobs)}")
 
         for index, job in enumerate(jobs, 1):
             if job.skip:
@@ -986,13 +1029,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             try:
                 raw_content = read_text_file(job.input_path)
                 processed_input = normalize_transcript_text(raw_content, converter)
-                processed_input = apply_replacements(processed_input, all_replacements)
+                processed_input = apply_replacements(processed_input, external_replacements)
                 title_hint = derive_title_hint(job.input_path)
                 result = process_text(
                     processed_input,
                     loaded_model,
                     style_guide,
                     title_hint,
+                    prompt_config,
                     converter,
                 )
                 job.output_path.write_text(
