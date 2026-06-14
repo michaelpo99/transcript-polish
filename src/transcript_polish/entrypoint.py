@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from . import cli
+from .generation import generate_response_checked
 from .user_config import UserConfigError, get_user_config_path, load_user_mode
 
 
@@ -94,6 +95,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     original_build_parser = cli.build_parser
     original_print_run_config = cli.print_run_config
     original_write_summary_files = cli.write_summary_files
+    original_generate_response = cli.generate_response
 
     def build_parser_with_mode():
         parser = original_build_parser()
@@ -148,6 +150,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     cli.build_parser = build_parser_with_mode
     cli.print_run_config = print_run_config_with_mode
     cli.write_summary_files = write_summary_files_with_mode
+    cli.generate_response = generate_response_checked
     try:
         return cli.main(raw_argv)
     except cli.UserFacingError as exc:
@@ -157,6 +160,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         cli.build_parser = original_build_parser
         cli.print_run_config = original_print_run_config
         cli.write_summary_files = original_write_summary_files
+        cli.generate_response = original_generate_response
 
 
 if __name__ == "__main__":
