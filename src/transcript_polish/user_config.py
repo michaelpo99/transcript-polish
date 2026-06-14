@@ -74,9 +74,12 @@ def write_user_mode(mode: str, path: Path | None = None) -> Path:
     table_pattern = re.compile(r"^\s*\[")
 
     replaced = False
+    entered_table = False
     updated: list[str] = []
     for line in lines:
-        if not replaced and mode_pattern.match(line):
+        if table_pattern.match(line):
+            entered_table = True
+        if not entered_table and not replaced and mode_pattern.match(line):
             updated.append(mode_line)
             replaced = True
         else:
