@@ -5,21 +5,16 @@ import sys
 # 這支檔案是 repo 內的開發入口。
 # 正式部署時，應優先使用 `pip install .` 產生的 transcript-polish 指令。
 #
-# 主要程式碼已移到 src/transcript_polish/cli.py。
-# 這裡先找出 repo 根目錄，然後把 src/ 放進 Python 匯入路徑。
+# 主要處理流程位於 src/transcript_polish/cli.py；entrypoint.py 另外負責
+# standard / quality 模式與使用者設定檔解析。
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = REPO_ROOT / "src"
 
-# 把 src/ 放進 Python 匯入路徑，這樣下面才能：
-# from transcript_polish.cli import main
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-# 從 package 匯入 main()，真正的執行流程都在那裡。
-from transcript_polish.cli import main
+from transcript_polish.entrypoint import main
 
 
 if __name__ == "__main__":
-    # 當這支檔案被直接執行時，轉去呼叫主程式的 main()，
-    # 並把它的結束碼回傳給 shell。
     sys.exit(main())
