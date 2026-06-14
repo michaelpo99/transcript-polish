@@ -38,13 +38,17 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# 互動式安裝程式會讀取這些設定；optional 套件內容仍以
+# 互動式安裝與解除安裝程式會讀取這些設定；optional 套件內容仍以
 # [project.optional-dependencies] 為唯一來源。
 [tool.transcript-polish.installer]
 command = "transcript-polish"
 venv-dir = "~/.venvs/transcript-polish"
 bin-dir = "~/bin"
 torch-requirement = "torch"
+known-models = [
+    "Qwen/Qwen2.5-3B-Instruct",
+    "Qwen/Qwen2.5-7B-Instruct",
+]
 
 [tool.transcript-polish.installer.optional-groups.quantization]
 description = "安裝 4-bit 量化支援，供 Qwen2.5-7B-Instruct 等較大模型使用。"
