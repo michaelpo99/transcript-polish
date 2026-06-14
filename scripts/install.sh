@@ -50,7 +50,7 @@ printf '專案目錄：%s\n' "$REPO_ROOT"
 printf '虛擬環境：%s\n' "$VENV_DIR"
 printf '%s\n' '一般使用者安裝完成後可直接執行 transcript-polish，不需要手動啟用 venv。'
 
-say_step '步驟 1/4：檢查 Python 與 venv 支援'
+say_step '步驟 1/5：檢查 Python 與 venv 支援'
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     printf '錯誤：找不到 %s。請先安裝 Python 3.10 以上版本。\n' "$PYTHON_BIN" >&2
     exit 1
@@ -68,7 +68,7 @@ if ! "$PYTHON_BIN" -c 'import venv' >/dev/null 2>&1; then
     exit 1
 fi
 
-say_step '步驟 2/4：建立或重用專用虛擬環境'
+say_step '步驟 2/5：建立或重用專用虛擬環境'
 if [[ -e "$VENV_DIR" ]]; then
     ask_environment_action
 fi
@@ -80,7 +80,7 @@ else
 fi
 VENV_PYTHON="$VENV_DIR/bin/python"
 
-say_step '步驟 3/4：更新安裝工具'
+say_step '步驟 3/5：更新安裝工具'
 printf '%s\n' '更新 venv 內的 pip、setuptools、wheel；版本已符合時 pip 不會重裝。'
 "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel
 
@@ -91,7 +91,10 @@ if ! "$VENV_PYTHON" -c 'import tomllib' >/dev/null 2>&1; then
     fi
 fi
 
-say_step '步驟 4/4：讀取 pyproject.toml 並同步專案'
-exec "$VENV_PYTHON" "$SCRIPT_DIR/install.py" \
+say_step '步驟 4/5：讀取 pyproject.toml 並同步專案'
+"$VENV_PYTHON" "$SCRIPT_DIR/install.py" \
     --repo-root "$REPO_ROOT" \
     --venv-dir "$VENV_DIR"
+
+say_step '步驟 5/5：設定此使用者的預設模型模式'
+"$VENV_PYTHON" "$SCRIPT_DIR/configure_default_mode.py"
