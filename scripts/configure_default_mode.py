@@ -52,6 +52,8 @@ def main() -> int:
         print(f"錯誤：{exc}", file=sys.stderr)
         return 1
 
+    effective_current_mode = current_mode or "standard"
+
     quantization_available = package_installed("accelerate") and package_installed(
         "bitsandbytes"
     )
@@ -84,7 +86,12 @@ def main() -> int:
         print(f"錯誤：{exc}", file=sys.stderr)
         return 1
 
-    print(f"  已設定 mode = \"{desired_mode}\"：{written_path}")
+    if effective_current_mode == desired_mode:
+        print(f"  mode 維持為 \"{desired_mode}\"。")
+    else:
+        print(f"  已設定 mode = \"{desired_mode}\"：{written_path}")
+    print(f"  目前預設 mode：{desired_mode}")
+    print(f"  如需修改，請編輯 {written_path} 的 `mode = \"standard\"` 或 `mode = \"quality\"`")
     return 0
 
 

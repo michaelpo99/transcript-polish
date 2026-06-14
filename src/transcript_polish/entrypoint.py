@@ -41,6 +41,14 @@ def option_is_explicit(argv: Sequence[str], option: str) -> bool:
     return any(argument == option or argument.startswith(option + "=") for argument in argv)
 
 
+def runtime_supports_quality(runtime_info: cli.RuntimeInfo) -> bool:
+    return (
+        runtime_info.cuda_available
+        and bool(runtime_info.accelerate_version)
+        and bool(runtime_info.bitsandbytes_version)
+    )
+
+
 def resolve_selection(
     argv: Sequence[str],
     *,
@@ -91,6 +99,7 @@ def append_mode_metadata(output_dir: Path, selection: ModeSelection) -> None:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     state: dict[str, ModeSelection] = {}
+    runtime_info = cli.detect_runtime_info()
 
     original_build_parser = cli.build_parser
     original_print_run_config = cli.print_run_config
@@ -123,6 +132,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 parsed_quantization=parsed.quantization,
                 config_path=get_user_config_path(),
             )
+            if (
+                selection.mode == "quality"
+                and selection.mode_source == "user_config"
+                and not runtime_supports_quality(runtime_info)
+            ):
+                preset = MODE_PRESETS[DEFAULT_MODE]
+                selection = ModeSelection(
+                    mode=DEFAULT_MODE,
+                    mode_source="user_config_fallback",
+                    model=preset.model,
+                    quantization=preset.quantization,
+                )
             parsed.mode = selection.mode
             parsed.mode_source = selection.mode_source
             parsed.model = selection.model

@@ -82,7 +82,7 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 
 say_step '步驟 3/5：更新安裝工具'
 printf '%s\n' '更新 venv 內的 pip、setuptools、wheel；版本已符合時 pip 不會重裝。'
-"$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel
+"$VENV_PYTHON" -m pip install --upgrade pip 'setuptools<82' wheel
 
 if ! "$VENV_PYTHON" -c 'import tomllib' >/dev/null 2>&1; then
     if ! "$VENV_PYTHON" -c 'import tomli' >/dev/null 2>&1; then
@@ -92,9 +92,27 @@ if ! "$VENV_PYTHON" -c 'import tomllib' >/dev/null 2>&1; then
 fi
 
 say_step '步驟 4/5：讀取 pyproject.toml 並同步專案'
-"$VENV_PYTHON" "$SCRIPT_DIR/install.py" \
+install_status=0
+if "$VENV_PYTHON" "$SCRIPT_DIR/install.py" \
     --repo-root "$REPO_ROOT" \
-    --venv-dir "$VENV_DIR"
+    --venv-dir "$VENV_DIR"; then
+    :
+else
+    install_status=$?
+    printf '%s\n' '步驟 4/5 未完整通過；仍會顯示目前預設 mode 與設定檔位置。'
+fi
 
 say_step '步驟 5/5：設定此使用者的預設模型模式'
-"$VENV_PYTHON" "$SCRIPT_DIR/configure_default_mode.py"
+mode_status=0
+if "$VENV_PYTHON" "$SCRIPT_DIR/configure_default_mode.py"; then
+    :
+else
+    mode_status=$?
+fi
+
+if [[ "$install_status" -ne 0 ]]; then
+    exit "$install_status"
+fi
+if [[ "$mode_status" -ne 0 ]]; then
+    exit "$mode_status"
+fi

@@ -34,6 +34,7 @@
 | `quality` | `Qwen/Qwen2.5-7B-Instruct`、4-bit | 品質優先，需要 CUDA 與量化套件 |
 
 未指定模式時，使用安裝程式寫入的使用者預設；若沒有設定檔，內建預設是 `standard`。
+若設定檔保留 `quality`，但目前環境缺少量化套件或 CUDA，執行時會自動退回 `standard`。
 
 ## 快速安裝
 
