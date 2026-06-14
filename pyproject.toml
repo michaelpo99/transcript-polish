@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # 此區塊提供套件工具與安裝流程使用的專案中繼資料。
 [project]
 name = "transcript-polish"
-version = "0.3.0"
+version = "0.3.1"
 description = "Polish raw transcripts into Traditional Chinese Markdown with local LLMs."
 readme = "README.md"
 requires-python = ">=3.10"
