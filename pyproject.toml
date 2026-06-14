@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # 此區塊提供套件工具與安裝流程使用的專案中繼資料。
 [project]
 name = "transcript-polish"
-version = "0.2.0"
+version = "0.3.0"
 description = "Polish raw transcripts into Traditional Chinese Markdown with local LLMs."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,6 +14,7 @@ requires-python = ">=3.10"
 dependencies = [
     "transformers>=4.57.0",
     "opencc-python-reimplemented>=0.1.7",
+    "tomli>=2.0.0; python_version < '3.11'",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,7 @@ dev = [
 
 [project.scripts]
 # 安裝後會提供 `transcript-polish` 指令入口。
-transcript-polish = "transcript_polish.cli:main"
+transcript-polish = "transcript_polish.entrypoint:main"
 
 [tool.setuptools]
 # 專案採用 `src/` 目錄布局來放置可匯入的套件程式碼。
@@ -51,7 +52,7 @@ known-models = [
 ]
 
 [tool.transcript-polish.installer.optional-groups.quantization]
-description = "安裝 4-bit 量化支援，供 Qwen2.5-7B-Instruct 等較大模型使用。"
+description = "安裝 4-bit 量化支援，供 Quality 模式使用。"
 default = true
 
 [tool.transcript-polish.installer.optional-groups.dev]
