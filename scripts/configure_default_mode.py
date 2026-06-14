@@ -33,6 +33,17 @@ def package_installed(name: str) -> bool:
         return False
 
 
+def cuda_available() -> bool:
+    try:
+        import torch  # type: ignore
+    except Exception:
+        return False
+    try:
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
 def main() -> int:
     config_path = get_user_config_path()
     try:
@@ -41,9 +52,10 @@ def main() -> int:
         print(f"錯誤：{exc}", file=sys.stderr)
         return 1
 
-    quality_available = package_installed("accelerate") and package_installed(
+    quantization_available = package_installed("accelerate") and package_installed(
         "bitsandbytes"
     )
+    quality_available = quantization_available and cuda_available()
 
     print("\n[預設模式] 設定一般執行時使用的模型模式")
     print(f"  設定檔：{config_path}")
@@ -57,13 +69,14 @@ def main() -> int:
         desired_mode = "quality" if use_quality else "standard"
     else:
         desired_mode = "standard"
-        if current_mode == "quality":
-            print(
-                "  本次未安裝完整 quantization 套件，為避免預設模式無法執行，"
-                "將改回 standard。"
-            )
+        if not quantization_available:
+            reason = "未安裝完整 quantization 套件"
         else:
-            print("  未安裝完整 quantization 套件，維持 standard。")
+            reason = "目前 CUDA 不可用"
+        if current_mode == "quality":
+            print(f"  {reason}，為避免預設模式無法執行，將改回 standard。")
+        else:
+            print(f"  {reason}，維持 standard。")
 
     try:
         written_path = write_user_mode(desired_mode, config_path)
