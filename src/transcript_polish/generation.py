@@ -27,9 +27,7 @@ def output_is_truncated(
     eos_token_ids: set[int],
 ) -> bool:
     token_count = len(generated_token_ids)
-    if token_count < max_new_tokens:
-        return False
-    if not generated_token_ids:
+    if token_count < max_new_tokens or token_count == 0:
         return False
 
     last_token = generated_token_ids[-1]
