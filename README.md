@@ -149,5 +149,7 @@ pytest
 ## 文件
 
 - 安裝與部署：[docs/INSTALL.md](docs/INSTALL.md)
-- 系統設計：[docs/SDD-transcript-polish.md](docs/SDD-transcript-polish.md)
+- 逐字稿整理系統設計：[docs/SDD-transcript-polish.md](docs/SDD-transcript-polish.md)
+- 共用模型核心與雙 CLI 重構規格（規劃）：[docs/SDD-shared-runtime-refactor.md](docs/SDD-shared-runtime-refactor.md)
+- 字幕翻譯功能規格（規劃）：[docs/SDD-subtitle-translate.md](docs/SDD-subtitle-translate.md)
 - 本地 LLM 技術背景：[reference/local-llm-inference-stack.md](reference/local-llm-inference-stack.md)
