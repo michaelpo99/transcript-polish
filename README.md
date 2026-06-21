@@ -150,4 +150,7 @@ pytest
 
 - 安裝與部署：[docs/INSTALL.md](docs/INSTALL.md)
 - 系統設計：[docs/SDD-transcript-polish.md](docs/SDD-transcript-polish.md)
+- 整合流程前置 CR：[docs/SDD-CR-001-integrated-pipeline-readiness.md](docs/SDD-CR-001-integrated-pipeline-readiness.md)
+- CR 文件命名規則：`docs/SDD-CR-###-<slug>.md`，同一 repo 內依建立順序遞增編號。
+- Bug fix 文件命名規則：`docs/SDD-BUGFIX-###-<slug>.md`，同一 repo 內依建立順序遞增編號。
 - 本地 LLM 技術背景：[reference/local-llm-inference-stack.md](reference/local-llm-inference-stack.md)
