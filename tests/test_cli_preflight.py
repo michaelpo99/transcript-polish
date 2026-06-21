@@ -1,4 +1,4 @@
-from transcript_polish import cli
+from transcript_polish import cli, entrypoint
 
 
 def make_runtime_info() -> cli.RuntimeInfo:
@@ -61,6 +61,8 @@ def test_prompt_config_is_validated_before_all_skipped(tmp_path, capsys):
 
 
 def test_check_does_not_load_model(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "detect_runtime_info", make_runtime_info)
+    monkeypatch.setattr(cli, "load_opencc_converter", lambda: object())
     monkeypatch.setattr(
         cli,
         "load_model",
@@ -72,7 +74,46 @@ def test_check_does_not_load_model(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 0
     assert "[check] transcript-polish 環境檢查" in captured.out
+    assert "[check] opencc=available" in captured.out
     assert "[check] 不會載入大型模型" in captured.out
+
+
+def test_check_fails_when_opencc_missing(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "detect_runtime_info", make_runtime_info)
+    monkeypatch.setattr(cli, "load_opencc_converter", lambda: None)
+
+    exit_code = cli.main(["--check"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "opencc" in captured.err
+
+
+def test_quality_check_requires_optional_packages(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli,
+        "detect_runtime_info",
+        lambda: cli.RuntimeInfo(
+            python_version="3.12.0",
+            torch_version="2.0.0",
+            transformers_version="4.57.0",
+            accelerate_version="",
+            bitsandbytes_version="",
+            cuda_available=False,
+            cuda_runtime="",
+            gpu_name="",
+            gpu_vram_mb="",
+            import_error="",
+        ),
+    )
+    monkeypatch.setattr(cli, "load_opencc_converter", lambda: object())
+
+    exit_code = entrypoint.main(["--mode", "quality", "--check"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "accelerate" in captured.err
+    assert "bitsandbytes" in captured.err
 
 
 def test_directory_scan_skips_underscore_control_files(tmp_path):

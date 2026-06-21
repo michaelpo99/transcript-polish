@@ -54,6 +54,8 @@ transcript-polish --dir ./transcript
 transcript-polish --check
 ```
 
+`--check` 會在缺少 `transformers`、`opencc`，或 quality mode 所需的 `accelerate` / `bitsandbytes` 時回傳非 0。
+
 完整說明：[docs/INSTALL.md](docs/INSTALL.md)
 
 ## 常用指令
@@ -79,8 +81,12 @@ transcript-polish --mode quality --dir ./transcript
 一鍵流程或手動 pipeline：
 
 ```bash
-transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
+
+若 `--output-dir` 要指向輸入目錄外部，請使用絕對路徑；`media2md` 會自動傳絕對路徑。
 
 整合流程預設 layout：
 

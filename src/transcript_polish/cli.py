@@ -128,6 +128,32 @@ def load_opencc_converter():
     return None
 
 
+def validate_check_environment(
+    runtime_info: RuntimeInfo,
+    args: argparse.Namespace,
+    converter,
+) -> None:
+    missing: List[str] = []
+    if not runtime_info.torch_version:
+        missing.append("torch")
+    if not runtime_info.transformers_version:
+        missing.append("transformers")
+    if converter is None:
+        missing.append("opencc")
+    if args.quantization == "4bit":
+        if not runtime_info.accelerate_version:
+            missing.append("accelerate")
+        if not runtime_info.bitsandbytes_version:
+            missing.append("bitsandbytes")
+
+    if missing:
+        raise UserFacingError(
+            "錯誤：check 環境缺少必要套件："
+            + ", ".join(missing)
+            + "。"
+        )
+
+
 def get_default_prompt_config() -> PromptConfig:
     return PromptConfig(
         system_prompt=DEFAULT_SYSTEM_PROMPT,
@@ -1168,6 +1194,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 load_replace_dict(args.replace_dict)
             if args.style_guide:
                 load_style_guide(args.style_guide)
+            converter = load_opencc_converter()
+            validate_check_environment(runtime_info, args, converter)
             print("[check] transcript-polish 環境檢查")
             print(f"[check] python={runtime_info.python_version}")
             print(f"[check] torch={runtime_info.torch_version or 'missing'}")
@@ -1181,6 +1209,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print(f"[check] cuda_available={format_bool(runtime_info.cuda_available)}")
             print(f"[check] model={args.model}")
             print(f"[check] quantization={args.quantization}")
+            print(f"[check] opencc={'available' if converter is not None else 'missing'}")
             print("[check] 不會載入大型模型")
             return 0
 

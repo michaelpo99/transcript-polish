@@ -43,10 +43,14 @@ meeting/
 目前 `transcript-polish` 已支援：
 
 ```bash
-transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
 
 因此 `media2md` 可以直接以 absolute path 呼叫，避免相對路徑語意混淆。
+
+若 `--output-dir` 要指向輸入目錄外部，請使用絕對路徑；`media2md` 會自動傳絕對路徑。
 
 ### 3.2 預設輸出仍可保留 `formatted/`
 
@@ -57,7 +61,7 @@ transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
 pipeline 場景應由 caller 明確指定：
 
 ```bash
---output-dir ./meeting/polished
+--output-dir "$(pwd)/meeting/polished"
 ```
 
 ### 3.3 control files 排除規則需收斂
@@ -100,10 +104,14 @@ if path.name.startswith("_"):
 README 與 docs/INSTALL.md 應新增一段：
 
 ```bash
-transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
 
 並說明這是供 `media2md` 或手動 pipeline 使用。
+
+若 `--output-dir` 要指向輸入目錄外部，請使用絕對路徑；`media2md` 會自動傳絕對路徑。
 
 ### 4.2 排除所有 underscore control files
 
@@ -150,6 +158,8 @@ transcript-polish --check
 
 第一版 `media2md` 可以不依賴此功能；但它是後續提升 UX 的合理方向。
 
+若 `--check` 缺少 `transformers`、`opencc`，或 quality mode 所需的 `accelerate` / `bitsandbytes`，應回傳非 0。
+
 ### 4.5 可選新增 pipeline summary metadata
 
 目前 `transcript-polish` 已會產生 `_run-summary.txt` 與 `_environment.txt`。
@@ -187,7 +197,9 @@ meeting/transcript/meeting.txt
 執行：
 
 ```bash
-transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
 
 應產生：
@@ -233,7 +245,9 @@ transcript-polish --dir ./transcript
 `media2md` 應能透過：
 
 ```bash
-transcript-polish --dir <target>/transcript --output-dir <target>/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
 
 把 raw transcript 轉成 polished Markdown。

@@ -139,8 +139,12 @@ transcript-polish --dir ./transcript
 若要接 `transcribe-audio` 的輸出目錄，可直接指定：
 
 ```bash
-transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+transcript-polish \
+  --dir "$(pwd)/meeting/transcript" \
+  --output-dir "$(pwd)/meeting/polished"
 ```
+
+若 `--output-dir` 要指向輸入目錄外部，請使用絕對路徑；`media2md` 會自動傳絕對路徑。
 
 明確使用 Standard：
 
@@ -172,6 +176,8 @@ transcript-polish \
 ```
 
 明確指定的 `--model` 或 `--quantization` 會覆蓋 mode 對應值。執行時 `[config]` 會顯示最後實際採用的值。
+
+`--check` 會在缺少 `transformers`、`opencc`，或 quality mode 所需的 `accelerate` / `bitsandbytes` 時回傳非 0。
 
 優先順序：
 
