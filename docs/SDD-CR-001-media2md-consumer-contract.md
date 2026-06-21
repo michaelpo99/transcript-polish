@@ -1,6 +1,6 @@
 # SDD/CR-001：media2md consumer contract
 
-狀態：Proposed
+狀態：Completed
 日期：2026-06-21
 適用 repo：transcript-polish
 

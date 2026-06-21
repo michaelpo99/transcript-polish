@@ -51,6 +51,7 @@ bash scripts/install.sh
 ```bash
 transcript-polish --help
 transcript-polish --dir ./transcript
+transcript-polish --check
 ```
 
 完整說明：[docs/INSTALL.md](docs/INSTALL.md)
@@ -75,9 +76,16 @@ transcript-polish --mode standard --dir ./transcript
 transcript-polish --mode quality --dir ./transcript
 ```
 
+一鍵流程或手動 pipeline：
+
+```bash
+transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+```
+
 其他參數：
 
 ```text
+transcript-polish --check
 transcript-polish --file <path>
 transcript-polish --replace-dict <path>
 transcript-polish --style-guide <path>
@@ -120,6 +128,7 @@ mode = "quality"
 - 預設輸出到來源目錄下的 `formatted/`
 - 支援外部 replacements、style guide 與 prompt config
 - 輸出 `_run-summary.txt` 與 `_environment.txt`
+- `--check` 只做環境與設定檢查，不載入大型模型
 
 ## 專案結構
 

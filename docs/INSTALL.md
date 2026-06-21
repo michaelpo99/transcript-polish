@@ -50,6 +50,8 @@ bash scripts/install.sh
 10. 驗證 CLI、PyTorch、量化套件與 dependency 狀態。
 11. 詢問是否將 Quality 設為此使用者的預設模式。
 
+如果安裝目錄不在 PATH，安裝程式只會提示對應的 `export PATH=...`，不會自動寫入 shell rc。
+
 ### 已有 venv
 
 若環境已存在，會詢問：
@@ -134,6 +136,12 @@ mode = "quality"
 transcript-polish --dir ./transcript
 ```
 
+若要接 `transcribe-audio` 的輸出目錄，可直接指定：
+
+```bash
+transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
+```
+
 明確使用 Standard：
 
 ```bash
@@ -144,12 +152,6 @@ transcript-polish --mode standard --dir ./transcript
 
 ```bash
 transcript-polish --mode quality --dir ./transcript
-```
-
-若安裝程式剛把 `~/bin` 加入 `~/.bashrc`：
-
-```bash
-source ~/.bashrc
 ```
 
 一般使用不需要執行：
@@ -235,7 +237,8 @@ rm -rf ~/.config/transcript-polish
 
 ```bash
 ls -l ~/bin/transcript-polish
-source ~/.bashrc
+export PATH="$HOME/bin:$PATH"
+transcript-polish --check
 ```
 
 檢查目前解析出的模式：

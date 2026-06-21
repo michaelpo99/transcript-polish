@@ -119,6 +119,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="將 ASR 原始逐字稿保守整理為可讀、忠實的繁體中文 Markdown。"
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="只檢查環境與設定，不載入大型模型",
+    )
     parser.add_argument("--file", help="處理單一檔案，僅接受 .txt 或 .md")
     parser.add_argument("--dir", help="處理指定目錄第一層的 .txt 與 .md")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="指定 Hugging Face 模型名稱")
@@ -242,9 +247,9 @@ def validate_input_file(path: Path) -> None:
 
 
 def should_skip_input(path: Path, default_output_dir: Path) -> bool:
-    if path.name in EXCLUDED_INPUT_NAMES:
+    if path.name.startswith(".") or path.name.startswith("_"):
         return True
-    if path.name.startswith("."):
+    if path.name in EXCLUDED_INPUT_NAMES:
         return True
     try:
         path.relative_to(default_output_dir)
@@ -939,6 +944,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        runtime_info = detect_runtime_info()
+        if args.check:
+            load_prompt_config(args.prompt_config)
+            if args.replace_dict:
+                load_replace_dict(args.replace_dict)
+            if args.style_guide:
+                load_style_guide(args.style_guide)
+            print("[check] transcript-polish 環境檢查")
+            print(f"[check] python={runtime_info.python_version}")
+            print(f"[check] torch={runtime_info.torch_version or 'missing'}")
+            print(
+                f"[check] transformers={runtime_info.transformers_version or 'missing'}"
+            )
+            print(f"[check] accelerate={runtime_info.accelerate_version or 'missing'}")
+            print(
+                f"[check] bitsandbytes={runtime_info.bitsandbytes_version or 'missing'}"
+            )
+            print(f"[check] cuda_available={format_bool(runtime_info.cuda_available)}")
+            print(f"[check] model={args.model}")
+            print(f"[check] quantization={args.quantization}")
+            print("[check] 不會載入大型模型")
+            return 0
+
         files, base_dir, source_label = resolve_input_files(args)
         if not files:
             raise UserFacingError(
@@ -950,7 +978,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         style_guide = load_style_guide(args.style_guide)
         prompt_config = load_prompt_config(args.prompt_config)
         jobs = build_file_jobs(files, output_dir, args.force)
-        runtime_info = detect_runtime_info()
         converter = load_opencc_converter()
         output_dir.mkdir(parents=True, exist_ok=True)
 

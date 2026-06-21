@@ -307,27 +307,11 @@ def ensure_path(bin_dir: Path) -> None:
         return
 
     print(f"[PATH] {bin_dir} 尚未在目前 PATH 中。")
-    bashrc = Path.home() / ".bashrc"
-    if not ask_yes_no(f"是否將 {bin_dir} 加入 {bashrc}？", default=True):
-        print(f"  請自行加入：export PATH=\"{bin_dir}:$PATH\"")
-        return
-
     if bin_dir == Path.home() / "bin":
         export_line = 'export PATH="$HOME/bin:$PATH"'
     else:
         export_line = f"export PATH={shell_single_quote(str(bin_dir))}:\"$PATH\""
-
-    existing = bashrc.read_text(encoding="utf-8") if bashrc.exists() else ""
-    if export_line not in existing.splitlines():
-        with bashrc.open("a", encoding="utf-8") as stream:
-            if existing and not existing.endswith("\n"):
-                stream.write("\n")
-            stream.write("\n# transcript-polish user commands\n")
-            stream.write(export_line + "\n")
-        print(f"  已更新 {bashrc}。")
-    else:
-        print(f"  {bashrc} 已包含相同設定。")
-    print(f"  請執行 `source {bashrc}` 或開啟新的 shell。")
+    print(f"  請自行加入：{export_line}")
 
 
 def validate_install(command_name: str, selected_groups: set[str]) -> None:
@@ -452,7 +436,7 @@ def main() -> int:
         if entry
     }
     if bin_dir.resolve() not in current_path_dirs:
-        print("若目前 shell 尚未讀取新的 PATH，請開啟新 shell 或 source ~/.bashrc。")
+        print(f"若目前 shell 尚未讀取新的 PATH，請手動加入：export PATH={shell_single_quote(str(bin_dir))}:\"$PATH\"")
     print("一般使用不需要 source 虛擬環境；只有開發、pip 管理與測試時才需要。")
     return 0
 
