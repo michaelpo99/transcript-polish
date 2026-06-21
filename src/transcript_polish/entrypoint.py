@@ -87,10 +87,16 @@ def resolve_selection(
     )
 
 
-def append_mode_metadata(output_dir: Path, selection: ModeSelection) -> None:
+def append_mode_metadata(
+    meta_dir: Path | None, output_dir: Path, selection: ModeSelection
+) -> None:
+    if meta_dir is None:
+        return
+
+    summary_name, environment_name = cli.resolve_metadata_file_names(meta_dir, output_dir)
     additions = f"mode={selection.mode}\nmode_source={selection.mode_source}\n"
-    for filename in ("_run-summary.txt", "_environment.txt"):
-        path = output_dir / filename
+    for filename in (summary_name, environment_name):
+        path = meta_dir / filename
         if path.is_file():
             with path.open("a", encoding="utf-8") as stream:
                 stream.write(additions)
@@ -163,9 +169,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     def write_summary_files_with_mode(*args, **kwargs):
         result = original_write_summary_files(*args, **kwargs)
         output_dir = kwargs.get("output_dir")
+        meta_dir = kwargs.get("meta_dir")
         if output_dir is None and args:
             output_dir = args[0]
-        append_mode_metadata(Path(output_dir), state["selection"])
+        if meta_dir is None and len(args) > 1:
+            meta_dir = args[1]
+        append_mode_metadata(
+            Path(meta_dir) if meta_dir is not None else None,
+            Path(output_dir),
+            state["selection"],
+        )
         return result
 
     cli.build_parser = build_parser_with_mode

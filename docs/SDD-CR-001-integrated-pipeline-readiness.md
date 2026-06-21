@@ -1,6 +1,6 @@
 # SDD/CR-001：整合流程前置修正規格
 
-狀態：Proposed
+狀態：Completed
 日期：2026-06-21
 適用 repo：transcript-polish
 

@@ -13,9 +13,21 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 DEFAULT_MODEL = "Qwen/Qwen2.5-3B-Instruct"
 DEFAULT_OUTPUT_DIR = "formatted"
+DEFAULT_LAYOUT = "auto"
 DEFAULT_QUANTIZATION = "none"
 SUPPORTED_EXTENSIONS = {".txt", ".md"}
-EXCLUDED_INPUT_NAMES = {"_run-summary.txt", "_environment.txt"}
+KNOWN_CONTROL_FILE_NAMES = {
+    "_run-summary.txt",
+    "_environment.txt",
+    "_failed-files.txt",
+    "transcribe-run-summary.txt",
+    "transcribe-environment.txt",
+    "transcribe-failed-files.txt",
+    "polish-run-summary.txt",
+    "polish-environment.txt",
+    "polish-failed-files.txt",
+}
+SUMMARY_PREFIX = "polish"
 MAX_NEW_TOKENS = 4096
 PROMPT_SAFETY_MARGIN_TOKENS = 512
 REPAIR_MIN_RATIO = 0.7
@@ -91,6 +103,16 @@ class FileJob:
 
 
 @dataclass(frozen=True)
+class ProcessingContext:
+    files: List[Path]
+    base_dir: Path
+    source_label: str
+    layout: str
+    output_dir: Path
+    meta_dir: Optional[Path]
+
+
+@dataclass(frozen=True)
 class PromptConfig:
     system_prompt: str
     repair_prompt: str
@@ -124,6 +146,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="只檢查環境與設定，不載入大型模型",
     )
+    parser.add_argument(
+        "--layout",
+        choices=("auto", "legacy", "sidecar"),
+        default=DEFAULT_LAYOUT,
+        help="指定輸出 layout，預設為 auto",
+    )
     parser.add_argument("--file", help="處理單一檔案，僅接受 .txt 或 .md")
     parser.add_argument("--dir", help="處理指定目錄第一層的 .txt 與 .md")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="指定 Hugging Face 模型名稱")
@@ -138,8 +166,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-config", help="載入 prompt 設定檔（JSON）")
     parser.add_argument(
         "--output-dir",
-        default=DEFAULT_OUTPUT_DIR,
-        help="指定輸出子目錄名稱或路徑，預設為 formatted",
+        help="指定輸出子目錄名稱或路徑，預設會依 layout 推導",
+    )
+    parser.add_argument(
+        "--meta-output",
+        help="指定 metadata 輸出目錄",
+    )
+    parser.add_argument(
+        "--no-meta",
+        action="store_true",
+        help="停用 metadata 輸出",
+    )
+    parser.add_argument(
+        "--include-control-files",
+        action="store_true",
+        help="允許處理以 _ 開頭的控制檔",
     )
     parser.add_argument("-f", "--force", action="store_true", help="覆蓋已存在的輸出檔")
     return parser
@@ -212,7 +253,142 @@ def detect_runtime_info() -> RuntimeInfo:
     )
 
 
-def resolve_input_files(args: argparse.Namespace) -> Tuple[List[Path], Path, str]:
+def resolve_sidecar_base_name(base_dir: Path) -> str:
+    name = base_dir.name
+    suffix = ".transcript"
+    if name.endswith(suffix):
+        name = name[: -len(suffix)]
+    return name or base_dir.name
+
+
+def resolve_sidecar_path(base_dir: Path, suffix: str) -> Path:
+    return base_dir.parent / f"{resolve_sidecar_base_name(base_dir)}{suffix}"
+
+
+def determine_layout(args: argparse.Namespace, base_dir: Path) -> str:
+    if args.layout != "auto":
+        return args.layout
+    return "sidecar" if base_dir.name.endswith(".transcript") else "legacy"
+
+
+def resolve_output_dir(
+    args: argparse.Namespace, base_dir: Path, layout: Optional[str] = None
+) -> Path:
+    layout = layout or determine_layout(args, base_dir)
+    output_value = args.output_dir
+    if output_value:
+        candidate = Path(output_value).expanduser()
+        if candidate.is_absolute():
+            output_dir = candidate.resolve()
+        else:
+            output_dir = (base_dir / candidate).resolve()
+        return output_dir
+
+    if layout == "sidecar":
+        return resolve_sidecar_path(base_dir, ".polished").resolve()
+    return (base_dir / DEFAULT_OUTPUT_DIR).resolve()
+
+
+def resolve_meta_dir(
+    args: argparse.Namespace,
+    base_dir: Path,
+    layout: Optional[str],
+    output_dir: Path,
+) -> Optional[Path]:
+    if args.no_meta:
+        return None
+
+    meta_value = args.meta_output
+    if meta_value:
+        candidate = Path(meta_value).expanduser()
+        if candidate.is_absolute():
+            return candidate.resolve()
+        return (base_dir / candidate).resolve()
+
+    if layout == "sidecar":
+        return resolve_sidecar_path(base_dir, ".meta").resolve()
+    return output_dir
+
+
+def validate_path_relationships(
+    base_dir: Path,
+    output_dir: Path,
+    meta_dir: Optional[Path],
+    layout: str,
+) -> None:
+    base_dir = base_dir.resolve()
+    output_dir = output_dir.resolve()
+    if output_dir == base_dir:
+        raise UserFacingError("錯誤：輸出目錄不可與輸入目錄相同。")
+    if base_dir.is_relative_to(output_dir):
+        raise UserFacingError("錯誤：輸入目錄不可位於輸出目錄內。")
+    if layout == "sidecar" and output_dir.is_relative_to(base_dir):
+        raise UserFacingError("錯誤：sidecar layout 的輸出目錄不可位於輸入目錄內。")
+
+    if meta_dir is None:
+        return
+
+    meta_dir = meta_dir.resolve()
+    if meta_dir == base_dir:
+        raise UserFacingError("錯誤：metadata 目錄不可與輸入目錄相同。")
+    if layout == "sidecar" and meta_dir.is_relative_to(base_dir):
+        raise UserFacingError("錯誤：sidecar layout 的 metadata 目錄不可位於輸入目錄內。")
+    if meta_dir == output_dir and layout != "legacy":
+        raise UserFacingError("錯誤：metadata 目錄不可與輸出目錄相同。")
+
+
+def resolve_processing_context(args: argparse.Namespace) -> ProcessingContext:
+    if args.file and args.dir:
+        raise UserFacingError("錯誤：--file 與 --dir 不可同時指定。")
+
+    if args.file:
+        file_path = Path(args.file).expanduser().resolve()
+        validate_input_file(file_path)
+        base_dir = file_path.parent
+        source_label = str(file_path)
+    else:
+        base_dir = Path(args.dir or ".").expanduser().resolve()
+        if not base_dir.is_dir():
+            raise UserFacingError(f"錯誤：目錄不存在：{base_dir}")
+        source_label = str(base_dir)
+
+    layout = determine_layout(args, base_dir)
+    output_dir = resolve_output_dir(args, base_dir, layout)
+    meta_dir = resolve_meta_dir(args, base_dir, layout, output_dir)
+    validate_path_relationships(base_dir, output_dir, meta_dir, layout)
+
+    if args.file:
+        files = [file_path]
+    else:
+        files = []
+        for path in sorted(base_dir.iterdir()):
+            if not path.is_file():
+                continue
+            if should_skip_input(
+                path,
+                output_dir,
+                meta_dir,
+                args.include_control_files,
+            ):
+                continue
+            if path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                files.append(path)
+
+    return ProcessingContext(
+        files=files,
+        base_dir=base_dir,
+        source_label=source_label,
+        layout=layout,
+        output_dir=output_dir,
+        meta_dir=meta_dir,
+    )
+
+
+def resolve_input_files(
+    args: argparse.Namespace,
+    output_dir: Path,
+    meta_dir: Optional[Path],
+) -> Tuple[List[Path], Path, str]:
     if args.file and args.dir:
         raise UserFacingError("錯誤：--file 與 --dir 不可同時指定。")
 
@@ -229,7 +405,12 @@ def resolve_input_files(args: argparse.Namespace) -> Tuple[List[Path], Path, str
     for path in sorted(scan_dir.iterdir()):
         if not path.is_file():
             continue
-        if should_skip_input(path, scan_dir / DEFAULT_OUTPUT_DIR):
+        if should_skip_input(
+            path,
+            output_dir,
+            meta_dir,
+            args.include_control_files,
+        ):
             continue
         if path.suffix.lower() in SUPPORTED_EXTENSIONS:
             files.append(path)
@@ -246,28 +427,30 @@ def validate_input_file(path: Path) -> None:
         raise UserFacingError(f"錯誤：不支援的副檔名：{path.suffix or '<none>'}")
 
 
-def should_skip_input(path: Path, default_output_dir: Path) -> bool:
-    if path.name.startswith(".") or path.name.startswith("_"):
+def should_skip_input(
+    path: Path,
+    default_output_dir: Path,
+    default_meta_dir: Optional[Path],
+    include_control_files: bool,
+) -> bool:
+    if path.name.startswith("."):
         return True
-    if path.name in EXCLUDED_INPUT_NAMES:
+    if not include_control_files and (
+        path.name.startswith("_") or path.name in KNOWN_CONTROL_FILE_NAMES
+    ):
         return True
     try:
         path.relative_to(default_output_dir)
         return True
     except ValueError:
-        return False
-
-
-def resolve_output_dir(args: argparse.Namespace, base_dir: Path) -> Path:
-    output_value = args.output_dir
-    candidate = Path(output_value).expanduser()
-    if candidate.is_absolute():
-        output_dir = candidate.resolve()
-    else:
-        output_dir = (base_dir / candidate).resolve()
-    if output_dir == base_dir.resolve():
-        raise UserFacingError("錯誤：輸出目錄不可與輸入 base directory 相同。")
-    return output_dir
+        pass
+    if default_meta_dir is not None:
+        try:
+            path.relative_to(default_meta_dir)
+            return True
+        except ValueError:
+            pass
+    return False
 
 
 def load_replace_dict(path_str: Optional[str]) -> Dict[str, str]:
@@ -848,6 +1031,8 @@ def print_run_config(
     source_label: str,
     file_count: int,
     output_dir: Path,
+    meta_dir: Optional[Path],
+    layout: str,
     model_name: str,
     quantization: str,
     runtime_info: RuntimeInfo,
@@ -861,8 +1046,10 @@ def print_run_config(
     print(f"[config] input={source_label}")
     print("[config] scan_depth=1")
     print("[config] file_types=.txt,.md")
+    print(f"[config] layout={layout}")
     print(f"[config] files_found={file_count}")
     print(f"[config] output_dir={output_dir}")
+    print(f"[config] meta_dir={meta_dir or 'none'}")
     print(f"[config] model={model_name}")
     print(f"[config] quantization={quantization}")
     print(f"[config] device={device}")
@@ -878,6 +1065,8 @@ def print_run_config(
 
 def write_summary_files(
     output_dir: Path,
+    meta_dir: Optional[Path],
+    layout: str,
     source_label: str,
     files: Sequence[Path],
     args: argparse.Namespace,
@@ -886,16 +1075,30 @@ def write_summary_files(
     dtype_name: str,
     model_memory_bytes: str,
     counts: Dict[str, int],
+    failed_rows: Sequence[Tuple[str, str, str]],
 ) -> None:
+    if args.no_meta:
+        return
+
     now = datetime.now().astimezone()
+    meta_root = meta_dir or output_dir
+    tool_prefix = SUMMARY_PREFIX if meta_dir is not None and meta_dir != output_dir else ""
+    summary_name = f"{tool_prefix}-run-summary.txt" if tool_prefix else "_run-summary.txt"
+    environment_name = (
+        f"{tool_prefix}-environment.txt" if tool_prefix else "_environment.txt"
+    )
+    failed_name = f"{tool_prefix}-failed-files.txt" if tool_prefix else "_failed-files.txt"
+
     summary_lines = [
         f"timestamp={now.isoformat()}",
         f"cwd={Path.cwd()}",
         f"input={source_label}",
         "scan_depth=1",
         "file_types=.txt,.md",
+        f"layout={layout}",
         f"files_found={len(files)}",
         f"output_dir={output_dir}",
+        f"meta_dir={meta_root}",
         f"model={args.model}",
         f"quantization={args.quantization}",
         f"device={device}",
@@ -904,6 +1107,7 @@ def write_summary_files(
         f"replace_dict={args.replace_dict or 'none'}",
         f"style_guide={args.style_guide or 'none'}",
         f"prompt_config={args.prompt_config or 'default'}",
+        f"include_control_files={format_bool(args.include_control_files)}",
         f"force={format_bool(args.force)}",
         f"success={counts['success']}",
         f"skipped={counts['skipped']}",
@@ -927,16 +1131,29 @@ def write_summary_files(
         f"dtype={dtype_name}",
         f"model_memory_bytes={model_memory_bytes}",
         f"prompt_config={args.prompt_config or 'default'}",
+        f"layout={layout}",
+        f"meta_dir={meta_root}",
     ]
     if runtime_info.import_error:
         environment_lines.append(f"import_error={runtime_info.import_error}")
 
-    (output_dir / "_run-summary.txt").write_text(
+    meta_root.mkdir(parents=True, exist_ok=True)
+    (meta_root / summary_name).write_text(
         "\n".join(summary_lines) + "\n", encoding="utf-8"
     )
-    (output_dir / "_environment.txt").write_text(
+    (meta_root / environment_name).write_text(
         "\n".join(environment_lines) + "\n", encoding="utf-8"
     )
+    failed_lines = ["input_file\toutput_file\treason"]
+    for input_file, output_file, reason in failed_rows:
+        failed_lines.append(f"{input_file}\t{output_file}\t{reason}")
+    (meta_root / failed_name).write_text("\n".join(failed_lines) + "\n", encoding="utf-8")
+
+
+def resolve_metadata_file_names(meta_dir: Optional[Path], output_dir: Path) -> Tuple[str, str]:
+    if meta_dir is not None and meta_dir != output_dir:
+        return f"{SUMMARY_PREFIX}-run-summary.txt", f"{SUMMARY_PREFIX}-environment.txt"
+    return "_run-summary.txt", "_environment.txt"
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -967,13 +1184,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             print("[check] 不會載入大型模型")
             return 0
 
-        files, base_dir, source_label = resolve_input_files(args)
-        if not files:
-            raise UserFacingError(
-                f"錯誤：找不到可處理檔案：{base_dir}（僅掃描第一層 .txt/.md）"
-            )
-
-        output_dir = resolve_output_dir(args, base_dir)
+        context = resolve_processing_context(args)
+        files = context.files
+        base_dir = context.base_dir
+        source_label = context.source_label
+        layout = context.layout
+        output_dir = context.output_dir
+        meta_dir = context.meta_dir
         external_replacements = load_replace_dict(args.replace_dict)
         style_guide = load_style_guide(args.style_guide)
         prompt_config = load_prompt_config(args.prompt_config)
@@ -986,6 +1203,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "skipped": sum(1 for job in jobs if job.skip),
             "failed": 0,
         }
+        failed_rows: List[Tuple[str, str, str]] = []
         queued_jobs = [job for job in jobs if not job.skip]
 
         if not queued_jobs:
@@ -993,6 +1211,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 source_label=source_label,
                 file_count=len(files),
                 output_dir=output_dir,
+                meta_dir=meta_dir,
+                layout=layout,
                 model_name=args.model,
                 quantization=args.quantization,
                 runtime_info=runtime_info,
@@ -1016,12 +1236,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 dtype_name="not_loaded",
                 model_memory_bytes="not_loaded",
                 counts=counts,
+                failed_rows=failed_rows,
+                meta_dir=meta_dir,
+                layout=layout,
             )
             print(
                 f"[summary] total={len(files)} success={counts['success']} "
                 f"skipped={counts['skipped']} failed={counts['failed']}"
             )
             print(f"[summary] output_dir={output_dir}")
+            if meta_dir is not None:
+                print(f"[summary] meta_dir={meta_dir}")
+            print(f"[result] output_dir={output_dir}")
+            if meta_dir is not None:
+                print(f"[result] meta_dir={meta_dir}")
             return 0
 
         print(
@@ -1035,6 +1263,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             source_label=source_label,
             file_count=len(files),
             output_dir=output_dir,
+            meta_dir=meta_dir,
+            layout=layout,
             model_name=args.model,
             quantization=loaded_model.quantization,
             runtime_info=runtime_info,
@@ -1075,9 +1305,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             except Exception as exc:
                 print(f"[{index}/{len(files)}] failed -> {job.input_path.name}: {exc}")
                 counts["failed"] += 1
+                failed_rows.append((str(job.input_path), str(job.output_path), str(exc)))
 
         write_summary_files(
             output_dir=output_dir,
+            meta_dir=meta_dir,
+            layout=layout,
             source_label=source_label,
             files=files,
             args=args,
@@ -1086,6 +1319,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             dtype_name=loaded_model.dtype_name,
             model_memory_bytes=loaded_model.model_memory_bytes,
             counts=counts,
+            failed_rows=failed_rows,
         )
 
         print(
@@ -1093,6 +1327,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             f"skipped={counts['skipped']} failed={counts['failed']}"
         )
         print(f"[summary] output_dir={output_dir}")
+        if meta_dir is not None:
+            print(f"[summary] meta_dir={meta_dir}")
+        print(f"[result] output_dir={output_dir}")
+        if meta_dir is not None:
+            print(f"[result] meta_dir={meta_dir}")
         return 0 if counts["failed"] == 0 else 1
     except UserFacingError as exc:
         print(str(exc), file=sys.stderr)

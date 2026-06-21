@@ -87,9 +87,67 @@ def test_directory_scan_skips_underscore_control_files(tmp_path):
     failed.write_text("failed", encoding="utf-8")
     hidden.write_text("hidden", encoding="utf-8")
 
-    files, base_dir, _source_label = cli.resolve_input_files(
-        cli.argparse.Namespace(file=None, dir=str(tmp_path))
+    ctx = cli.resolve_processing_context(
+        cli.argparse.Namespace(
+            file=None,
+            dir=str(tmp_path),
+            layout="legacy",
+            output_dir=None,
+            meta_output=None,
+            no_meta=False,
+            include_control_files=False,
+        )
     )
 
-    assert base_dir == tmp_path.resolve()
-    assert files == [regular.resolve()]
+    assert ctx.base_dir == tmp_path.resolve()
+    assert ctx.files == [regular.resolve()]
+
+
+def test_sidecar_layout_writes_polish_meta_files_without_loading_model(
+    tmp_path, monkeypatch, capsys
+):
+    input_dir = tmp_path / "Meeting.transcript"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hello", encoding="utf-8")
+    output_dir = tmp_path / "Meeting.polished"
+    output_dir.mkdir()
+    (output_dir / "a.md").write_text("done\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "detect_runtime_info", make_runtime_info)
+    monkeypatch.setattr(
+        cli,
+        "load_model",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not load")),
+    )
+
+    exit_code = cli.main(["--dir", str(input_dir), "--layout", "auto"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    meta_dir = tmp_path / "Meeting.meta"
+    assert (meta_dir / "polish-run-summary.txt").is_file()
+    assert (meta_dir / "polish-environment.txt").is_file()
+    assert (meta_dir / "polish-failed-files.txt").is_file()
+    assert "[result] output_dir=" in captured.out
+    assert "[result] meta_dir=" in captured.out
+
+
+def test_no_meta_suppresses_metadata_files(tmp_path, monkeypatch):
+    input_dir = tmp_path / "Meeting.transcript"
+    input_dir.mkdir()
+    (input_dir / "a.txt").write_text("hello", encoding="utf-8")
+    output_dir = tmp_path / "Meeting.polished"
+    output_dir.mkdir()
+    (output_dir / "a.md").write_text("done\n", encoding="utf-8")
+
+    monkeypatch.setattr(cli, "detect_runtime_info", make_runtime_info)
+    monkeypatch.setattr(
+        cli,
+        "load_model",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("should not load")),
+    )
+
+    exit_code = cli.main(["--dir", str(input_dir), "--layout", "auto", "--no-meta"])
+
+    assert exit_code == 0
+    assert not (tmp_path / "Meeting.meta").exists()

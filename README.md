@@ -82,10 +82,29 @@ transcript-polish --mode quality --dir ./transcript
 transcript-polish --dir ./meeting/transcript --output-dir ./meeting/polished
 ```
 
+整合流程預設 layout：
+
+```bash
+transcript-polish --dir ./Meeting.transcript
+```
+
+可用選項：
+
+```bash
+transcript-polish --layout auto|legacy|sidecar
+transcript-polish --meta-output ./Meeting.meta
+transcript-polish --no-meta
+transcript-polish --include-control-files
+```
+
 其他參數：
 
 ```text
 transcript-polish --check
+transcript-polish --layout auto|legacy|sidecar
+transcript-polish --meta-output <path>
+transcript-polish --no-meta
+transcript-polish --include-control-files
 transcript-polish --file <path>
 transcript-polish --replace-dict <path>
 transcript-polish --style-guide <path>
@@ -126,8 +145,10 @@ mode = "quality"
 
 - 掃描指定目錄第一層的 `.txt` / `.md`
 - 預設輸出到來源目錄下的 `formatted/`
+- `*.transcript` 預設會推導為 sibling `*.polished/` 與 `*.meta/`
 - 支援外部 replacements、style guide 與 prompt config
-- 輸出 `_run-summary.txt` 與 `_environment.txt`
+- 輸出 `_run-summary.txt` / `_environment.txt`，sidecar 時則為 `polish-*.txt`
+- `--include-control-files` 可允許處理 `_` 開頭控制檔
 - `--check` 只做環境與設定檢查，不載入大型模型
 
 ## 專案結構
